@@ -9,6 +9,7 @@ from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 from pathlib import Path
 from scipy import integrate
+from argparse import ArgumentParser
 
 from model import Unet
 from sde import (
@@ -93,17 +94,27 @@ def p_losses(sde, model, x_0, t):
     return loss
 
 def main():
+
+    parser = ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='fashion_mnist')
+    parser.add_argument('--sde_type', type=str, default='vp', choices=['ve', 'vp', 'subvp'])
+    parser.add_argument('--epoch', type=int, default=20)
+    parser.add_argument('--save_interval', type=int, default=10)
+    parser.add_argument('--channels', type=int, default=1)
+    args = parser.parse_args()
+
     image_size = 28
     dim = 32
-    channels = 1
+    channels = args.channels
     batch_size = 128
-    n_epochs = 50
-    save_interval = 10
-    ds_name = "fashion_mnist"
+    n_epochs = args.epoch
+    save_interval = args.save_interval
+    ds_name = args.dataset
+    sde_type = args.sde_type
 
     torch.manual_seed(42)
 
-    output_dir = Path(f'../out/{ds_name}')
+    output_dir = Path(f'../out/{ds_name}/{sde_type}')
     img_dir = output_dir / 'images'
     img_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = output_dir / 'ckpt'
@@ -129,7 +140,14 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4)).to(device)
-    sde = VPSDE()
+    if sde_type == 've':
+        sde = VESDE()
+    elif sde_type == 'vp':
+        sde = VPSDE()
+    elif sde_type == 'subvp':
+        sde = SubVPSDE()
+    else:
+        raise NotImplementedError()
 
     optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
