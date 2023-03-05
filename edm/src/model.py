@@ -51,17 +51,16 @@ def Downsample(dim, dim_out=None):
     )
 
 class SinusoidalPositionEmbeddings(nn.Module):
-    def __init__(self, dim, scale=1000):
+    def __init__(self, dim):
         super().__init__()
         self.dim = dim
-        self.scale = scale
 
     def forward(self, time):
         device = time.device
         half_dim = self.dim // 2
         embeddings = math.log(10000) / (half_dim - 1)
         embeddings = torch.exp(torch.arange(half_dim, device=device) * -embeddings)
-        embeddings = self.scale * time[:, None] * embeddings[None, :]
+        embeddings = time[:, None] * embeddings[None, :]
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
 

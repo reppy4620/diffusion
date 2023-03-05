@@ -40,7 +40,6 @@ def extract(a, t, x_shape):
     out = a.gather(-1, t.cpu())
     return out.reshape(batch_size, *((1,) * (len(x_shape) - 1))).to(t.device)
 
-# forward diffusion (using the nice property)
 def q_sample(x_start, t, noise=None):
     if noise is None:
         noise = torch.randn_like(x_start)
@@ -60,8 +59,6 @@ def p_sample(model, x, t, t_index):
     )
     sqrt_recip_alphas_t = extract(sqrt_recip_alphas, t, x.shape)
     
-    # Equation 11 in the paper
-    # Use our model (noise predictor) to predict the mean
     model_mean = sqrt_recip_alphas_t * (
         x - betas_t * model(x, t) / sqrt_one_minus_alphas_cumprod_t
     )
@@ -116,7 +113,7 @@ def main():
     channels = 1
     batch_size = 128
     n_epochs = 10
-    save_interval = 5
+    save_interval = 1
 
     output_dir = Path('../out')
     img_dir = output_dir / 'images'

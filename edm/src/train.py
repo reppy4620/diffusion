@@ -10,10 +10,10 @@ from tqdm import tqdm
 from pathlib import Path
 
 from model import Unet
-from sde import (
-    VESDE,
-    VPSDE,
-    SubVPSDE
+from loss import (
+    VPLoss,
+    VELoss,
+    EDMLoss
 )
 
 timesteps = 300
@@ -26,15 +26,7 @@ def p_sample(sde, model, x, t, dt):
     drift = (f - (g ** 2)[:, None, None, None] * score)
     diffusion =  g[:, None, None, None]
     w = torch.randn_like(x) * torch.sqrt(dt)
-    x = x + drift * (-dt) + diffusion * w
-    return x
-
-@torch.no_grad()
-def p_sample_ode(sde, model, x, t, dt):
-    f, g = sde.sde(x, t)
-    score = model(x, t)
-    x = x + (f - 0.5 * (g ** 2)[:, None, None, None] * score) * (-dt)
-    return x
+    return drift * (-dt) + diffusion * w
 
 # Algorithm 2 (including returning all images)
 @torch.no_grad()
@@ -73,8 +65,8 @@ def main():
     dim = 32
     channels = 1
     batch_size = 128
-    n_epochs = 50
-    save_interval = 10
+    n_epochs = 10
+    save_interval = 1
 
     torch.manual_seed(42)
 
@@ -104,16 +96,16 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4)).to(device)
-    sde = SubVPSDE()
+    loss = VPLoss()
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     def handle_batch(batch):
         batch_size = batch["pixel_values"].shape[0]
         x = batch["pixel_values"].to(device)
 
         t = torch.empty(size=(batch_size,), device=device).uniform_(eps, 1)
-        loss = p_losses(sde, model, x, t)
+        loss = loss(model, x, t)
         return loss
 
     train_losses = list()
@@ -125,6 +117,7 @@ def main():
             optimizer.zero_grad()
             loss = handle_batch(batch)
             loss.backward()
+            clip_grad_norm_(model.parameters(), 5.0)
 
             optimizer.step()
             losses.append(loss.item())
@@ -132,7 +125,7 @@ def main():
         train_losses.append(np.mean(losses))
         if epoch % save_interval == 0:
             model.eval()
-            images = sample(sde, model, image_size, channels=channels)
+            images = sample(model, image_size, channels=channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
