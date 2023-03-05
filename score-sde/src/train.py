@@ -8,6 +8,7 @@ from torch.utils.data import DataLoader
 from torch.nn.utils import clip_grad_norm_
 from tqdm import tqdm
 from pathlib import Path
+from scipy import integrate
 
 from model import Unet
 from sde import (
@@ -42,7 +43,9 @@ def p_sample_loop(sde, model, shape):
     device = next(model.parameters()).device
 
     b = shape[0]
-    x = torch.randn(shape, device=device)
+    t_1 = torch.ones((b,), device=device)
+    _, std = sde.marginal_prob(torch.zeros(shape, device=device), t_1)
+    x = torch.randn(shape, device=device) * std[:, None, None, None]
     ts = torch.linspace(1, eps, timesteps)
     dt = ts[0] - ts[1]
 
@@ -54,6 +57,27 @@ def p_sample_loop(sde, model, shape):
 @torch.no_grad()
 def sample(sde, model, image_size, batch_size=16, channels=3):
     return p_sample_loop(sde, model, shape=(batch_size, channels, image_size, image_size))
+
+@torch.no_grad()
+def sample_ode(sde, model, image_size, batch_size=16, channels=1):
+    shape = (batch_size, channels, image_size, image_size)
+    device = next(model.parameters()).device
+
+    b = shape[0]
+    t_1 = torch.ones((b,), device=device)
+    _, std = sde.marginal_prob(torch.zeros(shape, device=device), t_1)
+    x = torch.randn(shape, device=device) * std[:, None, None, None]
+    
+    def ode_func(t, x):
+        x = torch.tensor(x, device=device, dtype=torch.float).reshape(shape)
+        t = torch.full(size=(b,), fill_value=t, device=device, dtype=torch.float).reshape((b,))
+        score = model(x, t)
+        drift, _ = sde.probability_flow(score, x, t)
+        return drift.cpu().numpy().reshape((-1,)).astype(np.float64)
+    
+    res = integrate.solve_ivp(ode_func, (1., eps), x.reshape((-1,)).cpu().numpy(), rtol=1e-5, atol=1e-5, method='RK45')
+    x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
+    return x
 
 # forward diffusion (using the nice property)
 def q_sample(sde, x_0, t, noise):        
@@ -75,10 +99,11 @@ def main():
     batch_size = 128
     n_epochs = 50
     save_interval = 10
+    ds_name = "fashion_mnist"
 
     torch.manual_seed(42)
 
-    output_dir = Path('../out')
+    output_dir = Path(f'../out/{ds_name}')
     img_dir = output_dir / 'images'
     img_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = output_dir / 'ckpt'
@@ -96,7 +121,7 @@ def main():
 
         return examples
 
-    ds = load_dataset("fashion_mnist")
+    ds = load_dataset(ds_name)
     transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
@@ -104,9 +129,9 @@ def main():
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4)).to(device)
-    sde = SubVPSDE()
+    sde = VPSDE()
 
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
 
     def handle_batch(batch):
         batch_size = batch["pixel_values"].shape[0]
@@ -126,13 +151,14 @@ def main():
             loss = handle_batch(batch)
             loss.backward()
 
+            clip_grad_norm_(model.parameters(), 5.0)
             optimizer.step()
             losses.append(loss.item())
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')
         train_losses.append(np.mean(losses))
         if epoch % save_interval == 0:
             model.eval()
-            images = sample(sde, model, image_size, channels=channels)
+            images = sample_ode(sde, model, image_size, channels=channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
