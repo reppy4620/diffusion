@@ -1,9 +1,11 @@
 diffusion
 ===
 
-The Implementation of DIffusion models.
+The Implementation of DIffusion (like) models.
 
 - DDPM
 - Score-SDE
+- Rectified Flow
+- COnditional Flow Matching(Simplified version)
 
-Currently I cannnot train score-sde successfully. it provides only noisy images for me.
+Rectified Flow is so simple compared to score-sde because it considers simple trajectries induced by ODE mapping tractable distribution (e.g. gaussian) to data distribution, but in my case, its training cannot be stable.
