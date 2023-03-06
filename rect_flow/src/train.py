@@ -46,12 +46,12 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, default='fashion_mnist')
     parser.add_argument('--epoch', type=int, default=10)
-    parser.add_argument('--save_interval', type=int, default=5)
+    parser.add_argument('--save_interval', type=int, default=1)
     parser.add_argument('--channels', type=int, default=1)
     args = parser.parse_args()
 
     image_size = 28
-    dim = 32
+    dim = 64
     channels = args.channels
     batch_size = 128
     n_epochs = args.epoch
@@ -110,7 +110,7 @@ def main():
             optimizer.zero_grad()
             loss = handle_batch(batch)
             loss.backward()
-            clip_grad_norm_(model.parameters(), 5.0)
+            clip_grad_norm_(model.parameters(), 1.0)
             optimizer.step()
             losses.append(loss.item())
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')

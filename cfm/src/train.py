@@ -50,7 +50,7 @@ def main():
     parser = ArgumentParser()
     parser.add_argument('--dataset', type=str, default='fashion_mnist')
     parser.add_argument('--epoch', type=int, default=10)
-    parser.add_argument('--save_interval', type=int, default=5)
+    parser.add_argument('--save_interval', type=int, default=1)
     parser.add_argument('--channels', type=int, default=1)
     args = parser.parse_args()
 
