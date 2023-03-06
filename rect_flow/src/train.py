@@ -15,7 +15,7 @@ from argparse import ArgumentParser
 from model import Unet
 
 timesteps = 300
-eps = 1e-5
+eps = 1e-3
 
 @torch.no_grad()
 def sample_ode(model, image_size, batch_size=16, channels=1):
@@ -29,9 +29,9 @@ def sample_ode(model, image_size, batch_size=16, channels=1):
         x = torch.tensor(x, device=device, dtype=torch.float).reshape(shape)
         t = torch.full(size=(b,), fill_value=t, device=device, dtype=torch.float).reshape((b,))
         v = model(x, t)
-        return (-v).cpu().numpy().reshape((-1,)).astype(np.float64)
+        return v.cpu().numpy().reshape((-1,)).astype(np.float64)
     
-    res = integrate.solve_ivp(ode_func, (1., eps), x.reshape((-1,)).cpu().numpy(), method='RK45')
+    res = integrate.solve_ivp(ode_func, (eps, 1.), x.reshape((-1,)).cpu().numpy(), method='RK45')
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
     return x
 
@@ -48,12 +48,13 @@ def main():
     parser.add_argument('--epoch', type=int, default=10)
     parser.add_argument('--save_interval', type=int, default=1)
     parser.add_argument('--channels', type=int, default=1)
+    parser.add_argument('--dim', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=128)
     args = parser.parse_args()
 
-    image_size = 28
-    dim = 64
+    dim = args.dim
     channels = args.channels
-    batch_size = 128
+    batch_size = args.batch_size
     n_epochs = args.epoch
     save_interval = args.save_interval
     ds_name = args.dataset

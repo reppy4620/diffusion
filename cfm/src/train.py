@@ -30,9 +30,9 @@ def sample_ode(model, image_size, batch_size=16, channels=1):
         x = torch.tensor(x, device=device, dtype=torch.float).reshape(shape)
         t = torch.full(size=(b,), fill_value=t, device=device, dtype=torch.float).reshape((b,))
         v = model(x, t)
-        return (-v).cpu().numpy().reshape((-1,)).astype(np.float64)
+        return v.cpu().numpy().reshape((-1,)).astype(np.float64)
     
-    res = integrate.solve_ivp(ode_func, (1., eps), x.reshape((-1,)).cpu().numpy(), method='RK45')
+    res = integrate.solve_ivp(ode_func, (eps, 1.), x.reshape((-1,)).cpu().numpy(), method='RK45')
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
     return x
 
