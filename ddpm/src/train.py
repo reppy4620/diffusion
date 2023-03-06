@@ -7,6 +7,7 @@ from torchvision import transforms as T
 from torchvision.utils import make_grid
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+from argparse import ArgumentParser
 from pathlib import Path
 
 from schedule import (
@@ -108,34 +109,46 @@ def p_losses(denoise_model, x_start, t, noise=None, loss_type="l1"):
     return loss
 
 def main():
+
+    parser = ArgumentParser()
+    parser.add_argument('--dataset', type=str, default='fashion_mnist')
+    parser.add_argument('--epoch', type=int, default=20)
+    parser.add_argument('--save_interval', type=int, default=10)
+    parser.add_argument('--channels', type=int, default=1)
+    args = parser.parse_args()
+
     image_size = 28
     dim = 32
-    channels = 1
+    channels = args.channels
     batch_size = 128
-    n_epochs = 10
-    save_interval = 1
+    n_epochs = args.epoch
+    save_interval = args.save_interval
+    ds_name = args.dataset
+    img_key = 'img' if ds_name == 'cifar10' else 'image'
+    img_convert = 'RGB' if ds_name == 'cifar10' else 'L'
+    image_size = 32 if ds_name == 'cifar10' else 28
 
-    output_dir = Path('../out')
+    torch.manual_seed(42)
+
+    output_dir = Path(f'../out/{ds_name}')
     img_dir = output_dir / 'images'
     img_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = output_dir / 'ckpt'
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     
-    # define image transformations (e.g. using torchvision)
     transform = T.Compose([
         T.RandomHorizontalFlip(),
         T.ToTensor(),
         T.Lambda(lambda t: (t * 2) - 1)
     ])
 
-    # define function
     def transforms(examples):
-        examples["pixel_values"] = [transform(image.convert("L")) for image in examples["image"]]
-        del examples["image"]
+        examples["pixel_values"] = [transform(image.convert(img_convert)) for image in examples[img_key]]
+        del examples[img_key]
 
         return examples
 
-    ds = load_dataset("fashion_mnist")
+    ds = load_dataset(ds_name)
     transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
