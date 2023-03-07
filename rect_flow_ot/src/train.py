@@ -1,4 +1,5 @@
 import numpy as np
+import ot
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -14,8 +15,7 @@ from argparse import ArgumentParser
 
 from model import Unet
 
-timesteps = 300
-eps = 1e-5
+eps = 1e-3
 
 @torch.no_grad()
 def sample_ode(model, image_size, batch_size=16, channels=1):
@@ -31,12 +31,24 @@ def sample_ode(model, image_size, batch_size=16, channels=1):
         v = model(x, t)
         return v.cpu().numpy().reshape((-1,)).astype(np.float64)
     
-    res = integrate.solve_ivp(ode_func, (eps, 1.), x.reshape((-1,)).cpu().numpy(), method='RK45')
+    res = integrate.solve_ivp(ode_func, (0., 1.), x.reshape((-1,)).cpu().numpy(), method='RK45')
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
     return x
 
 def loss_fn(model, x_1, t):
+    bs = x_1.size(0)
     x_0 = torch.randn_like(x_1)
+    a = ot.unif(bs)
+    b = ot.unif(bs)
+    M = torch.cdist(x_0.reshape(bs, -1), x_1.reshape(bs, -1)) ** 2
+    pi = ot.emd(a, b, M.detach().cpu().numpy())
+    p = pi.flatten()
+    p = p / p.sum()
+    choices = np.random.choice(pi.shape[0] * pi.shape[1], p=p, size=bs)
+    i, j = np.divmod(choices, pi.shape[1])
+    x_0 = x_0[i]
+    x_1 = x_1[j]
+
     x_t = t[:, None, None, None] * x_1 + (1 - t[:, None, None, None]) * x_0
     v = model(x_t, t)
     loss = F.mse_loss(x_1 - x_0, v)
@@ -44,13 +56,12 @@ def loss_fn(model, x_1, t):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='huggan/AFHQv2')
-    parser.add_argument('--epoch', type=int, default=300)
-    parser.add_argument('--save_interval', type=int, default=50)
-    parser.add_argument('--sample_interval', type=int, default=10)
-    parser.add_argument('--channels', type=int, default=3)
-    parser.add_argument('--dim', type=int, default=64)
-    parser.add_argument('--batch_size', type=int, default=32)
+    parser.add_argument('--dataset', type=str, default='fashion_mnist')
+    parser.add_argument('--epoch', type=int, default=10)
+    parser.add_argument('--save_interval', type=int, default=1)
+    parser.add_argument('--channels', type=int, default=1)
+    parser.add_argument('--dim', type=int, default=32)
+    parser.add_argument('--batch_size', type=int, default=128)
     args = parser.parse_args()
 
     dim = args.dim
@@ -58,12 +69,11 @@ def main():
     batch_size = args.batch_size
     n_epochs = args.epoch
     save_interval = args.save_interval
-    sample_interval = args.sample_interval
     ds_name = args.dataset
 
-    img_key = 'image'
-    img_convert = 'RGB'
-    image_size = 128
+    img_key = 'img' if ds_name == 'cifar10' else 'image'
+    img_convert = 'RGB' if ds_name == 'cifar10' else 'L'
+    image_size = 32 if ds_name == 'cifar10' else 28
 
     torch.manual_seed(42)
 
@@ -74,7 +84,6 @@ def main():
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     
     transform = T.Compose([
-        T.Resize((image_size, image_size)),
         T.RandomHorizontalFlip(),
         T.ToTensor(),
         T.Lambda(lambda t: (t * 2) - 1)
@@ -87,13 +96,13 @@ def main():
         return examples
 
     ds = load_dataset(ds_name)
-    transformed_ds = ds.filter(lambda x: x["label"] == 0).with_transform(transforms).remove_columns("label")
+    transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
     dl = DataLoader(transformed_ds["train"], batch_size=batch_size, shuffle=True)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4, 8)).to(device)
+    model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4)).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
 
@@ -101,7 +110,7 @@ def main():
         batch_size = batch["pixel_values"].shape[0]
         x = batch["pixel_values"].to(device)
 
-        t = torch.empty(size=(batch_size,), device=device).uniform_(eps, 1)
+        t = torch.empty(size=(batch_size,), device=device).uniform_(0., 1.)
         loss = loss_fn(model, x, t)
         return loss
 
@@ -119,16 +128,13 @@ def main():
             losses.append(loss.item())
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')
         train_losses.append(np.mean(losses))
-
-        if epoch % sample_interval == 0:
-            print('Generate Sampling...')
+        if epoch % save_interval == 0:
             model.eval()
             images = sample_ode(model, image_size, channels=channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
-        if epoch % save_interval == 0:
-            print('Saving model weights...')
+
             torch.save({
                 'epoch': epoch,
                 'model': model.state_dict(),
