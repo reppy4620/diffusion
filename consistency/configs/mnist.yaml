@@ -1,0 +1,32 @@
+output_dir: ../out
+
+dataset: mnist
+img_key: 'image'
+img_convert: 'L'
+img_size: 28
+
+epochs: 300
+image_interval: 5
+ckpt_interval: 10
+batch_size: 128
+
+ema:
+  mu: 0.9999
+
+model:
+  dim: 32
+  dim_mults: [1, 2, 4]
+  channels: 1
+  s_data: 0.5
+  eps: 2e-3
+
+schedule:
+  s_1: 150
+  s_0: 2
+  mu_0: 0.9
+
+  fun:
+    rho: 7.0
+    eps: ${model.eps}
+    N: ${epochs}
+    T: 80.0
