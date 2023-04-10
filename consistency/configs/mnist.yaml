@@ -1,8 +1,8 @@
 output_dir: ../out
 
 dataset: mnist
-img_key: 'image'
-img_convert: 'L'
+img_key: image
+img_convert: L
 img_size: 28
 
 epochs: 300
@@ -28,5 +28,4 @@ schedule:
   fun:
     rho: 7.0
     eps: ${model.eps}
-    N: ${epochs}
     T: 80.0

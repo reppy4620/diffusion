@@ -5,6 +5,8 @@ img_key: img
 img_convert: RGB
 img_size: 32
 
+filter: cat
+
 epochs: 300
 image_interval: 5
 ckpt_interval: 10

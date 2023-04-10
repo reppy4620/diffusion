@@ -1,9 +1,11 @@
 output_dir: ../out
 
-dataset: cifar10
-img_key: img
+dataset: huggan/AFHQv2
+img_key: image
 img_convert: RGB
-img_size: 32
+img_size: 128
+
+filter: cat
 
 epochs: 300
 image_interval: 5

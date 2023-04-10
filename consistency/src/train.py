@@ -15,13 +15,6 @@ from omegaconf import OmegaConf
 
 from model import ConsistencyModel
 
-def loss_fn(model, x_1, t):
-    x_0 = torch.randn_like(x_1)
-    x_t = t[:, None, None, None] * x_1 + (1 - t[:, None, None, None]) * x_0
-    v = model(x_t, t)
-    loss = F.mse_loss(x_1 - x_0, v)
-    return loss
-
 def t_schedule(rho, eps, N, T):
     # paper p.4
     return torch.tensor([
@@ -44,11 +37,19 @@ def main():
     ckpt_dir = output_dir / 'ckpt'
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     
-    transform = T.Compose([
-        T.RandomHorizontalFlip(),
-        T.ToTensor(),
-        T.Lambda(lambda t: (t * 2) - 1)
-    ])
+    if config.dataset.startswith('huggan'):
+        transform = T.Compose([
+            T.Resize((config.img_size, config.img_size)),
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Lambda(lambda t: (t * 2) - 1)
+        ])
+    else:
+        transform = T.Compose([
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Lambda(lambda t: (t * 2) - 1)
+        ])
 
     def transforms(examples):
         examples["pixel_values"] = [transform(image.convert(config.img_convert)) for image in examples[config.img_key]]
@@ -57,10 +58,13 @@ def main():
         return examples
 
     ds = load_dataset(config.dataset)
+    if hasattr(config, 'filter'):
+        if config.filter == 'cat':
+            ds = ds.filter(lambda x: x["label"] == 0)
     transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
-    dl = DataLoader(transformed_ds["train"], batch_size=config.batch_size, shuffle=True)
+    dl = DataLoader(transformed_ds["train"], batch_size=config.batch_size, shuffle=True, num_workers=4)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = ConsistencyModel(**config.model).to(device)
@@ -87,7 +91,7 @@ def main():
                     + config.schedule.s_0 ** 2
                 )
             ) + 1
-            t_boundaries = t_schedule(**config.schedule.fun).to(device)
+            t_boundaries = t_schedule(**config.schedule.fun, N=N).to(device)
             t_indices = torch.randint(low=0, high=N-1, size=(batch_size,))
             t1 = t_boundaries[t_indices + 1]
             t2 = t_boundaries[t_indices]

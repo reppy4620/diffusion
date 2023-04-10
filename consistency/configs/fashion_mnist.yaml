@@ -1,9 +1,9 @@
 output_dir: ../out
 
-dataset: cifar10
-img_key: img
-img_convert: RGB
-img_size: 32
+dataset: fashion_mnist
+img_key: image
+img_convert: L
+img_size: 28
 
 epochs: 300
 image_interval: 5
@@ -16,7 +16,7 @@ ema:
 model:
   dim: 32
   dim_mults: [1, 2, 4]
-  channels: 3
+  channels: 1
   s_data: 0.5
   eps: 2e-3
 
