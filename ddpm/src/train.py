@@ -176,7 +176,7 @@ def main():
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')
         train_losses.append(np.mean(losses))
         if epoch % config.image_interval == 0:
-            images = sample(model, config.image_size, channels=config.model.channels)
+            images = sample(model, config.img_size, channels=config.model.channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
