@@ -8,9 +8,9 @@ img_size: 128
 filter: cat
 
 epochs: 300
-image_interval: 5
-ckpt_interval: 10
-batch_size: 128
+image_interval: 10
+ckpt_interval: 50
+batch_size: 16
 
 ema:
   mu: 0.9999

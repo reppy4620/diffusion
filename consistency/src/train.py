@@ -64,7 +64,7 @@ def main():
     transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
-    dl = DataLoader(transformed_ds["train"], batch_size=config.batch_size, shuffle=True, num_workers=4)
+    dl = DataLoader(transformed_ds["train"], batch_size=config.batch_size, shuffle=True, num_workers=16)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = ConsistencyModel(**config.model).to(device)
