@@ -5,7 +5,7 @@ img_key: img
 img_convert: RGB
 img_size: 32
 
-epochs: 300
+epochs: 100
 image_interval: 10
 ckpt_interval: 50
 batch_size: 128
