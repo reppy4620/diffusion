@@ -1,0 +1,18 @@
+output_dir: ../out
+
+dataset: fashion_mnist
+img_key: image
+img_convert: L
+img_size: 28
+
+epochs: 50
+image_interval: 10
+ckpt_interval: 25
+batch_size: 128
+
+sde_type: vp
+
+model:
+  dim: 32
+  dim_mults: [1, 2]
+  channels: 1

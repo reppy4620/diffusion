@@ -1,0 +1,18 @@
+output_dir: ../out
+
+dataset: cifar10
+img_key: img
+img_convert: RGB
+img_size: 32
+
+epochs: 300
+image_interval: 10
+ckpt_interval: 50
+batch_size: 128
+
+sde_type: vp
+
+model:
+  dim: 32
+  dim_mults: [1, 2, 4]
+  channels: 3

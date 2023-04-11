@@ -1,0 +1,20 @@
+output_dir: ../out
+
+dataset: huggan/AFHQv2
+img_key: image
+img_convert: RGB
+img_size: 128
+
+filter: cat
+
+epochs: 300
+image_interval: 10
+ckpt_interval: 50
+batch_size: 32
+
+sde_type: vp
+
+model:
+  dim: 32
+  dim_mults: [1, 2, 4]
+  channels: 3

@@ -11,11 +11,11 @@ from tqdm import tqdm
 from pathlib import Path
 from scipy import integrate
 from argparse import ArgumentParser
+from omegaconf import OmegaConf
 
 from model import Unet
 
-timesteps = 300
-eps = 1e-5
+eps = 1e-3
 sigma = 0.1
 
 @torch.no_grad()
@@ -48,51 +48,50 @@ def loss_fn(model, x_1, t, sigma):
 
 def main():
     parser = ArgumentParser()
-    parser.add_argument('--dataset', type=str, default='fashion_mnist')
-    parser.add_argument('--epoch', type=int, default=10)
-    parser.add_argument('--save_interval', type=int, default=1)
-    parser.add_argument('--channels', type=int, default=1)
+    parser.add_argument('--config', type=str, required=True)
     args = parser.parse_args()
 
-    dim = 32
-    channels = args.channels
-    batch_size = 128
-    n_epochs = args.epoch
-    save_interval = args.save_interval
-    ds_name = args.dataset
-
-    img_key = 'img' if ds_name == 'cifar10' else 'image'
-    img_convert = 'RGB' if ds_name == 'cifar10' else 'L'
-    image_size = 32 if ds_name == 'cifar10' else 28
+    config = OmegaConf.load(args.config)
 
     torch.manual_seed(42)
 
-    output_dir = Path(f'../out/{ds_name}')
+    output_dir = Path(f'{config.output_dir}/{config.dataset}')
     img_dir = output_dir / 'images'
     img_dir.mkdir(parents=True, exist_ok=True)
     ckpt_dir = output_dir / 'ckpt'
     ckpt_dir.mkdir(parents=True, exist_ok=True)
     
-    transform = T.Compose([
-        T.RandomHorizontalFlip(),
-        T.ToTensor(),
-        T.Lambda(lambda t: (t * 2) - 1)
-    ])
+    if config.dataset.startswith('huggan'):
+        transform = T.Compose([
+            T.Resize((config.img_size, config.img_size)),
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Lambda(lambda t: (t * 2) - 1)
+        ])
+    else:
+        transform = T.Compose([
+            T.RandomHorizontalFlip(),
+            T.ToTensor(),
+            T.Lambda(lambda t: (t * 2) - 1)
+        ])
 
     def transforms(examples):
-        examples["pixel_values"] = [transform(image.convert(img_convert)) for image in examples[img_key]]
-        del examples[img_key]
+        examples["pixel_values"] = [transform(image.convert(config.img_convert)) for image in examples[config.img_key]]
+        del examples[config.img_key]
 
         return examples
 
-    ds = load_dataset(ds_name)
+    ds = load_dataset(config.dataset)
+    if hasattr(config, 'filter'):
+        if config.filter == 'cat':
+            ds = ds.filter(lambda x: x["label"] == 0)
     transformed_ds = ds.with_transform(transforms).remove_columns("label")
 
     # create dataloader
-    dl = DataLoader(transformed_ds["train"], batch_size=batch_size, shuffle=True)
+    dl = DataLoader(transformed_ds["train"], batch_size=config.batch_size, shuffle=True, num_workers=16)
 
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = Unet(dim=dim, channels=channels, dim_mults=(1, 2, 4)).to(device)
+    model = Unet(**config.model).to(device)
 
     optimizer = optim.AdamW(model.parameters(), lr=1e-4)
 
@@ -105,10 +104,9 @@ def main():
         return loss
 
     train_losses = list()
-    for epoch in range(1, n_epochs + 1):
+    for epoch in range(1, config.epochs + 1):
         losses = list()
         bar = tqdm(dl, total=len(dl), desc=f'Epoch {epoch}: ')
-        model.train()
         for batch in bar:
             optimizer.zero_grad()
             loss = handle_batch(batch)
@@ -118,13 +116,13 @@ def main():
             losses.append(loss.item())
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')
         train_losses.append(np.mean(losses))
-        if epoch % save_interval == 0:
-            model.eval()
-            images = sample_ode(model, image_size, channels=channels)
+        if epoch % config.image_interval == 0:
+            images = sample_ode(model, config.image_size, channels=config.model.channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
 
+        if epoch % config.ckpt_interval == 0:
             torch.save({
                 'epoch': epoch,
                 'model': model.state_dict(),
