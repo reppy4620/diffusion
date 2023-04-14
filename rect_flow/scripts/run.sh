@@ -1,6 +1,6 @@
 #!/bin/bash
 
-datasets=(mnist fashion_mnist "huggan/AFHQv2")
+datasets=(mnist fashion_mnist cifar10 "huggan/AFHQv2")
 
 for ds in ${datasets[@]};
 do

@@ -81,7 +81,7 @@ def p_sample_loop(model, shape):
     for i in tqdm(reversed(range(0, timesteps)), desc='sampling loop time step', total=timesteps):
         t = torch.full((b,), i, device=device, dtype=torch.long)
         img = p_sample(model, img, t, i)
-    return img
+    return img.clamp(-1, 1)
 
 @torch.no_grad()
 def sample(model, image_size, batch_size=16, channels=3):

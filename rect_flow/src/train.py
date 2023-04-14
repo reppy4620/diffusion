@@ -33,7 +33,7 @@ def sample_ode(model, image_size, batch_size=16, channels=1):
     
     res = integrate.solve_ivp(ode_func, (eps, 1.), x.reshape((-1,)).cpu().numpy(), method='RK45')
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
-    return x
+    return x.clamp(-1, 1)
 
 def loss_fn(model, x_1, t):
     x_0 = torch.randn_like(x_1)

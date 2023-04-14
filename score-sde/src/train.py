@@ -22,44 +22,6 @@ from sde import (
 eps = 1e-3
 
 @torch.no_grad()
-def p_sample(sde, model, x, t, dt):
-    f, g = sde.sde(x, t)
-    score = model(x, t)
-    drift = (f - (g ** 2)[:, None, None, None] * score)
-    diffusion =  g[:, None, None, None]
-    w = torch.randn_like(x) * torch.sqrt(dt)
-    x = x + drift * (-dt) + diffusion * w
-    return x
-
-@torch.no_grad()
-def p_sample_ode(sde, model, x, t, dt):
-    f, g = sde.sde(x, t)
-    score = model(x, t)
-    x = x + (f - 0.5 * (g ** 2)[:, None, None, None] * score) * (-dt)
-    return x
-
-# Algorithm 2 (including returning all images)
-@torch.no_grad()
-def p_sample_loop(sde, model, shape):
-    device = next(model.parameters()).device
-
-    b = shape[0]
-    t_1 = torch.ones((b,), device=device)
-    _, std = sde.marginal_prob(torch.zeros(shape, device=device), t_1)
-    x = torch.randn(shape, device=device) * std[:, None, None, None]
-    ts = torch.linspace(1, eps, timesteps)
-    dt = ts[0] - ts[1]
-
-    for i in tqdm(reversed(ts), desc='sampling loop time step', total=timesteps):
-        t = torch.full((b,), i, device=device, dtype=torch.long)
-        x = p_sample(sde, model, x, t, dt)
-    return x
-
-@torch.no_grad()
-def sample(sde, model, image_size, batch_size=16, channels=3):
-    return p_sample_loop(sde, model, shape=(batch_size, channels, image_size, image_size))
-
-@torch.no_grad()
 def sample_ode(sde, model, image_size, batch_size=16, channels=1):
     shape = (batch_size, channels, image_size, image_size)
     device = next(model.parameters()).device
@@ -78,7 +40,7 @@ def sample_ode(sde, model, image_size, batch_size=16, channels=1):
     
     res = integrate.solve_ivp(ode_func, (1., eps), x.reshape((-1,)).cpu().numpy(), rtol=1e-5, atol=1e-5, method='RK45')
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape)
-    return x
+    return x.clamp(-1, 1)
 
 # forward diffusion (using the nice property)
 def q_sample(sde, x_0, t, noise):        
@@ -173,7 +135,7 @@ def main():
             bar.set_postfix_str(f'Loss: {np.mean(losses):.6f}')
         train_losses.append(np.mean(losses))
         if epoch % config.image_interval == 0:
-            images = sample_ode(model, config.img_size, channels=config.model.channels)
+            images = sample_ode(sde, model, config.img_size, channels=config.model.channels)
             img = make_grid(images, nrow=4, normalize=True)
             img = T.ToPILImage()(img)
             img.save(img_dir / f'epoch_{epoch}.png')
